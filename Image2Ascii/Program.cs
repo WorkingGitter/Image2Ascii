@@ -8,6 +8,8 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Image2Ascii
 {
@@ -24,21 +26,36 @@ namespace Image2Ascii
 
             // Parse command line options
             String filename = "";
-            ASCIIRenderer.RenderTypeEnum rt = ASCIIRenderer.RenderTypeEnum.rtSimple;
+            long rt = 0;
             foreach(var s in args)
             {
                 if(String.Compare(s, "-Ts", true) == 0)
                 {
-                    rt = ASCIIRenderer.RenderTypeEnum.rtSimple;
+                    rt |= (long)ASCIIRenderer.RenderOptions.rtAlgSimple;
                     continue;
                 }
 
-                if(String.Compare(s.Substring(0, 2), "-I", true) == 0)
+                if(String.Compare(s, "-D", true) == 0)
+                {
+                    rt |= (long)ASCIIRenderer.RenderOptions.rtShowWtdChrs;
+                    continue;
+                }
+
+                if (String.Compare(s, "-g", true) == 0)
+                {
+                    rt |= (long)ASCIIRenderer.RenderOptions.rtWtdChrs;
+                    continue;
+                }
+
+                if (String.Compare(s.Substring(0, 2), "-I", true) == 0)
                 {
                     filename = s.Substring(2, s.Length - 2);
                     continue;
                 }
             }
+
+            if (rt == 0)
+                rt = (long)ASCIIRenderer.RenderOptions.rtAlgSimple;
 
             if (String.IsNullOrEmpty(filename))
             {
@@ -54,10 +71,12 @@ namespace Image2Ascii
         private static void DisplayHelp()
         {
             Console.WriteLine("Usage:");
-            Console.WriteLine("  AArt -I<image filename> [-T<rendertype>]");
+            Console.WriteLine("  AArt -I<image filename> [options]");
             Console.WriteLine();
             Console.WriteLine("options:");
-            Console.WriteLine(" -Ts Simple conversion");
+            Console.WriteLine(" -Ts Simple conversion (simple char set)");
+            Console.WriteLine(" -g  Generate and use weighted characters");
+            Console.WriteLine(" -d  Display weighted characters");
             return;
         }
     } // class Program
@@ -69,18 +88,24 @@ namespace Image2Ascii
     ***************************************************************************/
     public class ASCIIRenderer
     {
-        public enum RenderTypeEnum
+        public enum RenderOptions
         {
-            rtSimple
+            rtAlgSimple        = 1,
+            rtShowWtdChrs   = 1 << 1,
+            rtWtdChrs  = 1 << 2
+            
+
         }
 
         private string _imagepath = "";
-        private RenderTypeEnum RenderType { get; set; } = RenderTypeEnum.rtSimple;
+        private long _options = (long)RenderOptions.rtAlgSimple;
+        private List<char> _CharTable = new List<char>()
+                                                { ' ', '.', '-', ';', 'o', '?', 'b', '*', '%', 'X', '#', '@' };
 
-        public ASCIIRenderer(string imagepath, RenderTypeEnum rt)
+        public ASCIIRenderer(string imagepath, long options)
         {
             _imagepath = imagepath;
-            RenderType = rt;
+            _options = options;
         }
 
 
@@ -89,12 +114,33 @@ namespace Image2Ascii
         ***************************************************************************/
         public void RenderToConsole()
         {
-            switch(RenderType)
+            if( (_options & (long)RenderOptions.rtShowWtdChrs) > 0 )
             {
-                case RenderTypeEnum.rtSimple:
-                default:
-                    ConvertUsingSimpleMethod(_imagepath);
-                    break;
+                // show simple source
+                Console.WriteLine();
+                Console.Write("Simple: ");
+                foreach (var c in _CharTable)
+                    Console.Write(c);
+
+                BuildCharacterWeighting(ref _CharTable);
+                Console.WriteLine();
+                Console.Write("Calculated: ");
+                foreach (var c in _CharTable)
+                    Console.Write(c);
+
+                return;
+            }
+
+            // Build characters to be used to render image
+            if ((_options & (long)RenderOptions.rtWtdChrs) > 0)
+            {
+                BuildCharacterWeighting(ref _CharTable);
+            }
+
+            if ((_options & (long)RenderOptions.rtAlgSimple) > 0)
+            {
+                ConvertUsingSimpleMethod(_imagepath);
+                return;
             }
         }
 
@@ -115,8 +161,6 @@ namespace Image2Ascii
         {
             if (String.IsNullOrEmpty(filename))
                 return;
-
-            char[] charpix = { ' ', '.','-', ';', 'o','?', 'b','*','%','X', '#', '@' };
 
             try
             {
@@ -156,12 +200,12 @@ namespace Image2Ascii
                             float brightness = pixel.GetBrightness();
 
                             // map this to our available character lookup table
-                            int index = (int)Math.Round((brightness * (charpix.Length - 1)), MidpointRounding.AwayFromZero);
+                            int index = (int)Math.Round((brightness * (_CharTable.Count - 1)), MidpointRounding.AwayFromZero);
                             Debug.Assert(index >= 0);
-                            Debug.Assert(index < charpix.Length);
+                            Debug.Assert(index < _CharTable.Count);
 
                             // Write our character to screen
-                            Console.Write(charpix[index]);
+                            Console.Write(_CharTable[index]);
                         }
                         Console.WriteLine();
 
@@ -186,7 +230,62 @@ namespace Image2Ascii
             }
         } // private void ConvertUsingSimpleMethod(string filename)
 
-    }
+
+
+        /**************************************************************************
+        * This will dynamically build a character weighting table for use when
+        * Rendering images.
+        * 
+        * 
+        ***************************************************************************/
+        private void BuildCharacterWeighting(ref List<char> CharTable)
+        {
+            CharTable.Clear();
+
+            int w = 20;
+            int h = 20;
+
+            Dictionary<char, int> table = new Dictionary<char, int>();
+            Bitmap bitmap = new Bitmap(w, h);
+            Graphics g = Graphics.FromImage(bitmap);
+            Font f = new Font("Consolas", 12, FontStyle.Regular, GraphicsUnit.Pixel);
+
+            // Loop through all the usuable character range
+            for (int i = 33; i < 127; i++)
+            {
+                g.Clear(Color.White);
+
+                string s = new string((char)i, 1);
+                g.DrawString(s, f, new SolidBrush(Color.Black), 0, 0);
+
+                int hit = 0;
+                for (int j = 0; j < h; j++)
+                {
+                    for (int k = 0; k < w; k++)
+                    {
+                        Color c = bitmap.GetPixel(k, j);
+                        if (c.GetBrightness() < 0.4)
+                            hit++;
+                    }
+                }
+
+                table[(char)i] = hit;
+
+                SizeF sz = g.MeasureString(s, f);
+                Debug.WriteLine($"{s} : width: {sz.Width}, height: {sz.Height}");
+            }
+
+            var myList = table.ToList();
+            myList.Sort((x, y) => x.Value.CompareTo(y.Value));
+            foreach (var v in myList)
+                CharTable.Add(v.Key);
+
+            f.Dispose();
+            g.Dispose();
+            bitmap.Dispose();   // release resources
+        }
+
+    } // public class ASCIIRenderer
 
 
 
