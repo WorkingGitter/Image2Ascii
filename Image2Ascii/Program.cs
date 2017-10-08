@@ -31,6 +31,7 @@ namespace Image2Ascii
 
             ConvertBitmapToASCII(args[0]);
 
+            Console.ReadLine();
         }
 
         static void ConvertBitmapToASCII(string filename)
@@ -62,7 +63,7 @@ namespace Image2Ascii
                             float brightness = pixel.GetBrightness();
 
                             // map this to our available lookup table
-                            int index = (int)Math.Round((brightness * charpix.Length) / 1.0, MidpointRounding.AwayFromZero);
+                            int index = (int)Math.Round((brightness * (charpix.Length - 1)), MidpointRounding.AwayFromZero);
                             Debug.Assert(index >= 0);
                             Debug.Assert(index < charpix.Length);
 
