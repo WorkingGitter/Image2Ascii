@@ -30,7 +30,7 @@ namespace Image2Ascii
             long rt = 0;
             foreach(var s in args)
             {
-                /****** Future Option ********
+                /****** Future Option ********/
                 if(String.Compare(s, "-Ts", true) == 0)
                 {
                     rt |= (long)ASCIIRenderer.RenderOptions.rtAlgSimple;
