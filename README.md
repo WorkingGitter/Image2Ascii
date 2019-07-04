@@ -1,6 +1,8 @@
 Image2Ascii
 ===========
 
+[![Build Status](https://dev.azure.com/RichardChin/Image2Ascii/_apis/build/status/WorkGitter.Image2Ascii?branchName=master)](https://dev.azure.com/RichardChin/Image2Ascii/_build/latest?definitionId=2&branchName=master)
+
 ### About
 Renders a given image to the command line console.
 Images are redrawn using predefined ASCII characters.
